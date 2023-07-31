@@ -76,7 +76,7 @@ impl Patterns {
         for i in 0..c.len() {
             let idx = i + offset;
             if c[i].count_ones() >= self.threshold {
-                if idx + self.len < c.len() {
+                if idx + self.len <= c.len() {
                     pos.push(idx)
                 }
             }
@@ -91,7 +91,8 @@ impl Patterns {
 fn test_seed() {
     let fp = Patterns::new(b"CAGAGC", 6);
 
-    let seeds = fp.seed(b"TATAAGGCCTGTCTCTTATACACATCTCCGAGCCCA");
+    let seeds = fp.seed(b"TATATGCGTTCAGAGCTGTCGTGGTTGACTTCAGTT");
+    // let seeds = fp.seed(b"TATAAGGCCTGTCTCTTATACACATCTCCGAGCCCA");
     // ATAACTTCCTCAGAGCGGGAGTGTGGATCTGCAGAT
     assert_eq!(vec![27], seeds);
 }
