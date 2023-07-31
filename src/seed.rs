@@ -2,10 +2,11 @@
 pub struct Patterns {
     patterns: [u8; 16],
     threshold: u32,
+    len: usize,
 }
 
 impl Patterns {
-    pub fn new(a: &[u8]) -> Self {
+    pub fn new(a: &[u8], threshold: usize) -> Self {
         let mask = 0x06;
         let mut patterns = [0u8; 16];
 
@@ -18,11 +19,12 @@ impl Patterns {
 
         Self {
             patterns,
-            threshold: (a.len() / 2) as u32,
+            threshold: (n * a.len() / threshold / 2) as u32,
+            len: a.len(),
         }
     }
 
-    pub fn seed(&self, ref_: &[u8], _identity: f64) -> Vec<usize> {
+    pub fn seed(&self, ref_: &[u8]) -> Vec<usize> {
         let mut seeds: Vec<usize> = vec![];
 
         if ref_.len() <= 16 {
@@ -37,7 +39,13 @@ impl Patterns {
 
                 seeds.append(&mut self.extract_seeds(&c, start));
 
-                start += 16;
+                start += 16 - self.len;
+            }
+
+            if start < ref_.len() {
+                let c = self.pshufb(&ref_[start..]);
+
+                seeds.append(&mut self.extract_seeds(&c, start));
             }
         }
 
@@ -74,4 +82,14 @@ impl Patterns {
 
         pos
     }
+}
+
+
+#[test]
+fn test_seed() {
+    let fp = Patterns::new(b"CAGAGC", 6);
+
+    let seeds = fp.seed(b"TATAAGGCCTGTCTCTTATACACATCTCCGAGCCCA");
+
+    assert_eq!(vec![27], seeds);
 }

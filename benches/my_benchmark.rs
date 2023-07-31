@@ -9,7 +9,7 @@ pub fn file_scan(c: &mut Criterion) {
         io::{BufRead, BufReader},
     };
 
-    let pattern = Patterns::new(b"AGCTCATAAGTGAG");
+    let pattern = Patterns::new(b"AGCTCATAAGTGAG", 13);
 
     let file_path = "./seq_lib.txt";
 
@@ -23,7 +23,7 @@ pub fn file_scan(c: &mut Criterion) {
     c.bench_function("scan file", |b| {
         b.iter(|| {
             for seq in &lines {
-                pattern.seed(black_box(seq.as_bytes()), black_box(1.0));
+                pattern.seed(black_box(seq.as_bytes()));
             }
         })
     });
