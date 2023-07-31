@@ -55,7 +55,7 @@ impl Patterns {
     fn pshufb(&self, ref_: &[u8]) -> [u8; 16] {
         let mut c: [u8; 16] = [0u8; 16];
 
-        for (i, kmer) in ref_[..ref_.len() - 1].windows(2).enumerate() {
+        for (i, kmer) in ref_[..ref_.len()].windows(2).enumerate() {
             let idx = ((kmer[0] & 0x6) << 1) | ((kmer[1] & 0x6) >> 1);
             let fp = self.patterns[idx as usize] as u128;
 
