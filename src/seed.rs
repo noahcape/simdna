@@ -59,7 +59,7 @@ impl Patterns {
             let idx = ((kmer[0] & 0x6) << 1) | ((kmer[1] & 0x6) >> 1);
             let fp = self.patterns[idx as usize] as u128;
 
-            let to = if 8 > i { i } else { 8 };
+            let to = if 8 > i { i + 1 } else { 8 };
 
             for j in 0..to {
                 let mask = 1 << j;
@@ -76,7 +76,7 @@ impl Patterns {
         for i in 0..c.len() {
             let idx = i + offset;
             if c[i].count_ones() >= self.threshold {
-                if idx + self.len <= c.len() {
+                if i + self.len <= c.len() {
                     pos.push(idx)
                 }
             }
@@ -91,8 +91,7 @@ impl Patterns {
 fn test_seed() {
     let fp = Patterns::new(b"CAGAGC", 6);
 
-    let seeds = fp.seed(b"TATATGCGTTCAGAGCTGTCGTGGTTGACTTCAGTT");
-    // let seeds = fp.seed(b"TATAAGGCCTGTCTCTTATACACATCTCCGAGCCCA");
-    // ATAACTTCCTCAGAGCGGGAGTGTGGATCTGCAGAT
+    let seeds = fp.seed(b"TATAAGGCCTGTCTCTTATACACATCTCCGAGCCCA");
+    
     assert_eq!(vec![27], seeds);
 }
