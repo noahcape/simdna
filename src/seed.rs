@@ -11,7 +11,7 @@ impl Patterns {
 
         let n = if a.len() > 8 { 8 } else { a.len() };
 
-        for (i, fp) in a[0..=n].windows(2).enumerate() {
+        for (i, fp) in a[0..n].windows(2).enumerate() {
             let idx = (fp[0] & mask) << 1 | (fp[1] & mask) >> 1;
             patterns[idx as usize] |= 1 << i
         }
