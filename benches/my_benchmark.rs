@@ -1,5 +1,59 @@
+use std::arch::aarch64::uint8x16_t;
+
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
-use simdna::seed::Patterns;
+use simdna::seed::*;
+
+pub fn file_scan_simd(c: &mut Criterion) {
+    use std::{
+        fs::File,
+        io::{BufRead, BufReader},
+    };
+
+    let pattern: uint8x16_t = unsafe { SIMDna::load_pattern(b"CAGAGC") };
+
+    let file_path = "./seq_lib.txt";
+
+    let file = File::open(file_path).expect("no such file");
+    let buf = BufReader::new(file);
+    let lines: Vec<String> = buf
+        .lines()
+        .map(|l| l.expect("Could not parse line"))
+        .collect();
+
+    c.bench_function("scan file with SIMD", |b| {
+        b.iter(|| {
+            for seq in &lines {
+                let mut start = 0;
+
+                while start < seq.len() - 16 {
+                    let seq: uint8x16_t =
+                        unsafe { SIMDna::load_ref(seq[start..start + 16].as_bytes()) };
+                    unsafe {
+                        pattern
+                            .shuffle_bytes(seq)
+                            .shift_lanes()
+                            .count_ones()
+                            .locate_seeds(3)
+                    };
+
+                    start += 10;
+                }
+
+                if start < seq.len() {
+                    let seq: uint8x16_t =
+                        unsafe { SIMDna::load_ref(seq[seq.len() - 16..seq.len()].as_bytes()) };
+                    unsafe {
+                        pattern
+                            .shuffle_bytes(seq)
+                            .shift_lanes()
+                            .count_ones()
+                            .locate_seeds(3)
+                    };
+                }
+            }
+        })
+    });
+}
 
 pub fn file_scan(c: &mut Criterion) {
     use std::{
@@ -55,10 +109,11 @@ pub fn file_scan_edit_dist(c: &mut Criterion) {
     });
 }
 
-criterion_group!(benches, file_scan, file_scan_edit_dist);
+criterion_group!(benches, file_scan_simd, file_scan, file_scan_edit_dist);
 
 criterion_main!(benches);
 
+// in order to replicate the current scanning with ANTISEQUENCE
 fn hamming(a: &[u8], b: &[u8], threshold: usize) -> Option<usize> {
     if a.len() != b.len() {
         return None;

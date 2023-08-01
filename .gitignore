@@ -16,3 +16,6 @@ Cargo.lock
 # compiled files
 lib
 rust-toolchain
+
+# workspace config
+.vscode
