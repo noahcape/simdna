@@ -25,60 +25,60 @@ impl Patterns {
     }
 
     pub fn seed(&self, ref_: &[u8]) -> Vec<usize> {
+        if ref_.len() <= 16 {
+            return self.extract_seeds(ref_, 0, ref_.len());
+        }
+
+        let mut start = 0;
         let mut seeds: Vec<usize> = vec![];
 
-        if ref_.len() <= 16 {
-            let c = self.pshufb(ref_);
+        while start < ref_.len() - 16 {
+            let mut c = self.extract_seeds(&ref_[start..=start + 16], start, ref_.len());
 
-            seeds.append(&mut self.extract_seeds(&c, 0))
-        } else {
-            let mut start = 0;
+            seeds.append(&mut c);
 
-            while start < ref_.len() - 16 {
-                let c = self.pshufb(&ref_[start..=start + 16]);
+            start += 16 - self.len;
+        }
 
-                seeds.append(&mut self.extract_seeds(&c, start));
+        if start < ref_.len() {
+            let mut c = self.extract_seeds(&ref_[start..], start, ref_.len());
 
-                start += 16 - self.len;
-            }
-
-            if start < ref_.len() {
-                let c = self.pshufb(&ref_[start..]);
-
-                seeds.append(&mut self.extract_seeds(&c, start));
-            }
+            seeds.append(&mut c);
         }
 
         seeds
     }
 
-    fn pshufb(&self, ref_: &[u8]) -> [u8; 16] {
+    fn extract_seeds(&self, ref_: &[u8], offset: usize, len: usize) -> Vec<usize> {
         let mut c: [u8; 16] = [0u8; 16];
+        let mut pos: Vec<usize> = vec![];
 
         for (i, kmer) in ref_[..ref_.len()].windows(2).enumerate() {
             let idx = ((kmer[0] & 0x6) << 1) | ((kmer[1] & 0x6) >> 1);
-            let fp = self.patterns[idx as usize] as u128;
+            let fp = self.patterns[idx as usize];
 
             let to = if 8 > i { i + 1 } else { 8 };
 
             for j in 0..to {
                 let mask = 1 << j;
-                c[i - j] |= (fp & mask) as u8;
+                if fp & mask == mask {
+                    c[i - j] |= fp & mask;
+                }
+            }
+
+            if i >= to && c[i - to].count_ones() >= self.threshold && i - to + self.len <= len {
+                pos.push(i - to + offset)
             }
         }
 
-        c
-    }
-
-    fn extract_seeds(&self, c: &[u8; 16], offset: usize) -> Vec<usize> {
-        let mut pos: Vec<usize> = vec![];
-
-        for i in 0..c.len() {
-            let idx = i + offset;
-            if c[i].count_ones() >= self.threshold {
-                if i + self.len <= c.len() {
-                    pos.push(idx)
-                }
+        for (i, elm) in c
+            .iter()
+            .enumerate()
+            .take(ref_.len() - 1)
+            .skip(ref_.len() - 9)
+        {
+            if elm.count_ones() >= self.threshold && i + self.len <= len {
+                pos.push(i + offset)
             }
         }
 
@@ -86,12 +86,11 @@ impl Patterns {
     }
 }
 
-
 #[test]
 fn test_seed() {
     let fp = Patterns::new(b"CAGAGC", 6);
 
     let seeds = fp.seed(b"TATAAGGCCTGTCTCTTATACACATCTCCGAGCCCA");
-    
+
     assert_eq!(vec![27], seeds);
 }
