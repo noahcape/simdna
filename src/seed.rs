@@ -34,26 +34,23 @@ static LANE_AND: [&[u8; 16]; 8] = [
 ];
 
 pub trait SIMDna {
+    fn block_size() -> usize;
+
     /// used scheme c[i] = a[b[i]] where c is returned `Self`, b are `indices` and `a` is being indexed
     fn shuffle_bytes(self, indices: Self) -> Self;
 
-    /// count set bits in each lane (byte)
-    fn count_ones(self) -> Self;
-
-    /// sets all lanes which value is greater than threshold to all ones
-    /// simplifies find method
-    fn locate_seeds(self, threshold: u8) -> Self;
+    /// sets all lanes whose byte population is greater than threshold to all ones
+    fn fill_seed_lanes(self, threshold: u8) -> Self;
 
     /// locate the first instance of a seed
     /// `offset` indicates lane[0]'s distance from beginning of sequence
     /// `len` is length of input seq
     unsafe fn find(self, offset: usize, len: usize) -> Option<usize>;
 
-    /// shifting lanes 8 times to align down sequence kmer instances with 
-    /// start instance
+    /// shifting lanes 8 times to align down sequence kmer instances with start instance
     unsafe fn shift_lanes(self) -> Self;
 
-    /// Creates a new compressed nucleotide kmer SIMD vector, `slice` should be 17 base dna sequence
+    /// Creates a new compressed nucleotide kmer SIMD vector, `slice` should be at least a 17 base dna sequence
     unsafe fn load_ref(slice: &[u8]) -> Self;
 
     /// Creates a new finger print pattern representation
@@ -61,22 +58,26 @@ pub trait SIMDna {
 
     /// Turn array of u8 into SIMD vector
     fn load(slice: &[u8; 16]) -> Self;
+
+    /// Run methods to find first acceptable seed index, threshold is passed to `fill_seed_lanes`
+    /// This will only scan ref_ up until first seed is found, if it is not acceptable run again with `start` as the return index + 1
+    unsafe fn locate(self, ref_: &[u8], threshold: u8, start: &mut usize) -> Option<usize>;
 }
 
 impl SIMDna for uint8x16_t {
+    #[inline]
+    fn block_size() -> usize {
+        16
+    }
+
     #[inline]
     fn shuffle_bytes(self, indices: Self) -> Self {
         unsafe { vqtbl1q_u8(self, indices) }
     }
 
     #[inline]
-    fn count_ones(self) -> Self {
-        unsafe { vcntq_u8(self) }
-    }
-
-    #[inline]
-    fn locate_seeds(self, threshold: u8) -> Self {
-        unsafe { vcgeq_u8(self, SIMDna::load(&[threshold; 16])) }
+    fn fill_seed_lanes(self, threshold: u8) -> Self {
+        unsafe { vcgeq_u8(vcntq_u8(self), SIMDna::load(&[threshold; 16])) }
     }
 
     #[inline]
@@ -112,6 +113,41 @@ impl SIMDna for uint8x16_t {
         }
 
         res
+    }
+
+    #[inline]
+    unsafe fn locate(self, ref_: &[u8], threshold: u8, start: &mut usize) -> Option<usize> {
+        let block_size = uint8x16_t::block_size();
+
+        while *start < ref_.len() - block_size {
+            let seq: uint8x16_t = SIMDna::load_ref(&ref_[*start..=*start + block_size]);
+            let idx = self
+                .shuffle_bytes(seq)
+                .shift_lanes()
+                .fill_seed_lanes(threshold)
+                .find(*start, block_size);
+
+            if idx.is_some() {
+                return idx;
+            }
+
+            *start += 10;
+        }
+
+        if *start >= ref_.len() - block_size {
+            let seq_vec: uint8x16_t = SIMDna::load_ref(&ref_[*start..]);
+            let idx = self
+                .shuffle_bytes(seq_vec)
+                .shift_lanes()
+                .fill_seed_lanes(3)
+                .find(*start, ref_.len() - *start);
+
+            if idx.is_some() {
+                return idx;
+            }
+        }
+
+        None
     }
 
     #[inline]
@@ -153,18 +189,11 @@ fn simd_instr() {
         let ref_vec: uint8x16_t = SIMDna::load_ref(b"TCAGAGCTTTTTTTTTT");
         let c = pattern_vec.shuffle_bytes(ref_vec);
 
-        // println!("{:?}", pattern_vec);
-        // println!("{:?}", c.shift_lanes());
-        // println!("{:?}", c.shift_lanes().count_ones());
-        // println!("{:?}", c.shift_lanes().count_ones().locate_seeds(3));
-        println!(
-            "{:?}",
-            c.shift_lanes().count_ones().locate_seeds(3).find(0, 16)
-        );
+        println!("{:?}", c.shift_lanes().fill_seed_lanes(3).find(0, 16));
     }
 }
 
-/// First attempt at seeding without SIMD
+// First attempt at seeding without SIMD
 #[derive(Clone, Debug)]
 pub struct Patterns {
     patterns: [u8; 16],

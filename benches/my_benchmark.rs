@@ -1,7 +1,7 @@
 use std::arch::aarch64::uint8x16_t;
 
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
-use simdna::seed::*;
+use simdna::{hamming, seed::*};
 
 pub fn file_scan_simd(c: &mut Criterion) {
     use std::{
@@ -9,7 +9,9 @@ pub fn file_scan_simd(c: &mut Criterion) {
         io::{BufRead, BufReader},
     };
 
-    let pattern: uint8x16_t = unsafe { SIMDna::load_pattern(b"CAGAGC") };
+    let pattern_seq = b"CAGAGC";
+
+    let pattern: uint8x16_t = unsafe { SIMDna::load_pattern(pattern_seq) };
 
     let file_path = "./seq_lib.txt";
 
@@ -25,33 +27,8 @@ pub fn file_scan_simd(c: &mut Criterion) {
             for seq in &lines {
                 let mut start = 0;
 
-                while start < seq.len() - 16 {
-                    let seq: uint8x16_t =
-                        unsafe { SIMDna::load_ref(seq[start..start + 16].as_bytes()) };
-                    unsafe {
-                        pattern
-                            .shuffle_bytes(seq)
-                            .shift_lanes()
-                            .count_ones()
-                            .locate_seeds(3)
-                            .find(start, 16)
-                    };
-
-                    start += 10;
-                }
-
-                if start < seq.len() {
-                    let seq_vec: uint8x16_t =
-                        unsafe { SIMDna::load_ref(seq[seq.len() - 16..seq.len()].as_bytes()) };
-                    unsafe {
-                        pattern
-                            .shuffle_bytes(seq_vec)
-                            .shift_lanes()
-                            .count_ones()
-                            .locate_seeds(3)
-                            // make sure that this is correct
-                            .find(start, seq.len() - 16)
-                    };
+                if let Some(idx) = unsafe { pattern.locate(seq.as_bytes(), 3, &mut start) } {
+                    hamming(pattern_seq, seq[idx..idx + pattern_seq.len()].as_bytes(), 5);
                 }
             }
         })
@@ -125,45 +102,3 @@ pub fn file_scan_edit_dist(c: &mut Criterion) {
 criterion_group!(benches, file_scan_simd, file_scan, file_scan_edit_dist);
 
 criterion_main!(benches);
-
-// in order to replicate the current scanning with ANTISEQUENCE
-fn hamming(a: &[u8], b: &[u8], threshold: usize) -> Option<usize> {
-    if a.len() != b.len() {
-        return None;
-    }
-
-    let a_ptr = a.as_ptr();
-    let b_ptr = b.as_ptr();
-    let n = a.len();
-    let mut res = 0;
-    let mut i = 0;
-
-    unsafe {
-        while i < (n / 8) * 8 {
-            let a_word = std::ptr::read_unaligned(a_ptr.add(i) as *const u64);
-            let b_word = std::ptr::read_unaligned(b_ptr.add(i) as *const u64);
-
-            let xor = a_word ^ b_word;
-            let or1 = xor | (xor >> 1);
-            let or2 = or1 | (or1 >> 2);
-            let or3 = or2 | (or2 >> 4);
-            let mask = or3 & 0x0101010101010101u64;
-            res += mask.count_ones() as usize;
-
-            i += 8;
-        }
-
-        while i < n {
-            res += (*a_ptr.add(i) != *b_ptr.add(i)) as usize;
-            i += 1;
-        }
-    }
-
-    let matches = n - res;
-
-    if matches >= threshold {
-        Some(matches)
-    } else {
-        None
-    }
-}
