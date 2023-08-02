@@ -34,22 +34,23 @@ pub fn file_scan_simd(c: &mut Criterion) {
                             .shift_lanes()
                             .count_ones()
                             .locate_seeds(3)
-                            .get_seeds(start)
+                            .find(start, 16)
                     };
 
                     start += 10;
                 }
 
                 if start < seq.len() {
-                    let seq: uint8x16_t =
+                    let seq_vec: uint8x16_t =
                         unsafe { SIMDna::load_ref(seq[seq.len() - 16..seq.len()].as_bytes()) };
                     unsafe {
                         pattern
-                            .shuffle_bytes(seq)
+                            .shuffle_bytes(seq_vec)
                             .shift_lanes()
                             .count_ones()
                             .locate_seeds(3)
-                            .get_seeds(start)
+                            // make sure that this is correct
+                            .find(start, seq.len() - 16)
                     };
                 }
             }
@@ -112,7 +113,7 @@ pub fn file_scan_edit_dist(c: &mut Criterion) {
                                 continue;
                             }
                         }
-            
+
                         best_match = Some((matches, i, i + pattern.len()));
                     }
                 }

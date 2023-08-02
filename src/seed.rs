@@ -7,7 +7,7 @@ use std::arch::x86_64::*;
 #[cfg(target_arch = "aarch64")]
 use std::{arch::aarch64::*, mem::transmute};
 
-use std::{ptr, mem::size_of};
+use std::{mem::size_of, ptr};
 
 static SHIFT_LANE_LEFT: [&[u8; 16]; 8] = [
     &[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15],
@@ -33,37 +33,6 @@ static LANE_AND: [&[u8; 16]; 8] = [
     ],
 ];
 
-static LANE_MASKS: [&[u8; 16]; 16] = [
-    &[255, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], 
-    &[0, 255, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], 
-    &[0, 0, 255, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], 
-    &[0, 0, 0, 255, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], 
-    &[0, 0, 0, 0, 255, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], 
-    &[0, 0, 0, 0, 0, 255, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], 
-    &[0, 0, 0, 0, 0, 0, 255, 0, 0, 0, 0, 0, 0, 0, 0, 0], 
-    &[0, 0, 0, 0, 0, 0, 0, 255, 0, 0, 0, 0, 0, 0, 0, 0], 
-    &[0, 0, 0, 0, 0, 0, 0, 0, 255, 0, 0, 0, 0, 0, 0, 0], 
-    &[0, 0, 0, 0, 0, 0, 0, 0, 0, 255, 0, 0, 0, 0, 0, 0], 
-    &[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 255, 0, 0, 0, 0, 0], 
-    &[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 255, 0, 0, 0, 0], 
-    &[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 255, 0, 0, 0], 
-    &[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 255, 0, 0], 
-    &[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 255, 0], 
-    &[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 255],
-];
-
-static PARTITION: [&[u8; 16]; 2] = [
-    &[0, 1, 2, 3, 4, 5, 6, 7, 15, 15, 15, 15, 15, 15, 15, 15],
-    &[8, 9, 10, 11, 12, 13, 14, 15, 0, 0, 0, 0, 0, 0, 0, 0],
-];
-
-static PARTITION_AND: [&[u8; 16]; 4] = [
-    &[255, 255, 255, 255, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], 
-    &[0, 0, 0, 0, 255, 255, 255, 255, 0, 0, 0, 0, 0, 0, 0, 0], 
-    &[0, 0, 0, 0, 0, 0, 0, 0, 255, 255, 255, 255, 0, 0, 0, 0],
-    &[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 255, 255, 255, 255],
-];
-
 pub trait SIMDna {
     /// used scheme c[i] = a[b[i]] where c is returned `Self`, b are `indices` and `a` is being indexed
     fn shuffle_bytes(self, indices: Self) -> Self;
@@ -71,8 +40,17 @@ pub trait SIMDna {
     /// count set bits in each lane (byte)
     fn count_ones(self) -> Self;
 
+    /// sets all lanes which value is greater than threshold to all ones
+    /// simplifies find method
     fn locate_seeds(self, threshold: u8) -> Self;
-    unsafe fn get_seeds(self, offset: usize) -> Vec<usize>;
+
+    /// locate the first instance of a seed
+    /// `offset` indicates lane[0]'s distance from beginning of sequence
+    /// `len` is length of input seq
+    unsafe fn find(self, offset: usize, len: usize) -> Option<usize>;
+
+    /// shifting lanes 8 times to align down sequence kmer instances with 
+    /// start instance
     unsafe fn shift_lanes(self) -> Self;
 
     /// Creates a new compressed nucleotide kmer SIMD vector, `slice` should be 17 base dna sequence
@@ -102,25 +80,23 @@ impl SIMDna for uint8x16_t {
     }
 
     #[inline]
-    unsafe fn get_seeds(self, offset: usize) -> Vec<usize> {
-        let mut seeds: Vec<usize> = vec![];
-
+    unsafe fn find(self, offset: usize, len: usize) -> Option<usize> {
         if vmaxvq_u8(self) != 255 {
-            return seeds;
+            return None;
         }
 
         let arr = ptr::addr_of!(self) as *const u8;
 
         let mut i = 0;
-        while i < 16 {
-            if *arr.add(i*size_of::<u8>()) == 255 {
-                seeds.push(i+offset);
+        while i < len {
+            if *arr.add(i * size_of::<u8>()) == 255 {
+                return Some(i + offset);
             }
 
             i += 1;
         }
 
-        seeds
+        None
     }
 
     #[inline]
@@ -183,7 +159,7 @@ fn simd_instr() {
         // println!("{:?}", c.shift_lanes().count_ones().locate_seeds(3));
         println!(
             "{:?}",
-            c.shift_lanes().count_ones().locate_seeds(3).get_seeds(0)
+            c.shift_lanes().count_ones().locate_seeds(3).find(0, 16)
         );
     }
 }
