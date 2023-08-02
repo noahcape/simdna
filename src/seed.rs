@@ -7,15 +7,61 @@ use std::arch::x86_64::*;
 #[cfg(target_arch = "aarch64")]
 use std::{arch::aarch64::*, mem::transmute};
 
-static SHIFT_LANE_LEFT: [[u8; 16]; 8] = [
-    [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15],
-    [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 0],
-    [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 0, 0],
-    [3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 0, 0, 0],
-    [4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 0, 0, 0, 0],
-    [5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 0, 0, 0, 0, 0],
-    [6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 0, 0, 0, 0, 0, 0],
-    [7, 8, 9, 10, 11, 12, 13, 14, 15, 0, 0, 0, 0, 0, 0, 0],
+use std::{ptr, mem::size_of};
+
+static SHIFT_LANE_LEFT: [&[u8; 16]; 8] = [
+    &[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15],
+    &[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 0],
+    &[2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 0, 0],
+    &[3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 0, 0, 0],
+    &[4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 0, 0, 0, 0],
+    &[5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 0, 0, 0, 0, 0],
+    &[6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 0, 0, 0, 0, 0, 0],
+    &[7, 8, 9, 10, 11, 12, 13, 14, 15, 0, 0, 0, 0, 0, 0, 0],
+];
+
+static LANE_AND: [&[u8; 16]; 8] = [
+    &[1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+    &[2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 0],
+    &[4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 0, 0],
+    &[8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 0, 0, 0],
+    &[16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 0, 0, 0, 0],
+    &[32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 0, 0, 0, 0, 0],
+    &[64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 0, 0, 0, 0, 0, 0],
+    &[
+        128, 128, 128, 128, 128, 128, 128, 128, 128, 0, 0, 0, 0, 0, 0, 0,
+    ],
+];
+
+static LANE_MASKS: [&[u8; 16]; 16] = [
+    &[255, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], 
+    &[0, 255, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], 
+    &[0, 0, 255, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], 
+    &[0, 0, 0, 255, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], 
+    &[0, 0, 0, 0, 255, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], 
+    &[0, 0, 0, 0, 0, 255, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], 
+    &[0, 0, 0, 0, 0, 0, 255, 0, 0, 0, 0, 0, 0, 0, 0, 0], 
+    &[0, 0, 0, 0, 0, 0, 0, 255, 0, 0, 0, 0, 0, 0, 0, 0], 
+    &[0, 0, 0, 0, 0, 0, 0, 0, 255, 0, 0, 0, 0, 0, 0, 0], 
+    &[0, 0, 0, 0, 0, 0, 0, 0, 0, 255, 0, 0, 0, 0, 0, 0], 
+    &[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 255, 0, 0, 0, 0, 0], 
+    &[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 255, 0, 0, 0, 0], 
+    &[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 255, 0, 0, 0], 
+    &[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 255, 0, 0], 
+    &[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 255, 0], 
+    &[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 255],
+];
+
+static PARTITION: [&[u8; 16]; 2] = [
+    &[0, 1, 2, 3, 4, 5, 6, 7, 15, 15, 15, 15, 15, 15, 15, 15],
+    &[8, 9, 10, 11, 12, 13, 14, 15, 0, 0, 0, 0, 0, 0, 0, 0],
+];
+
+static PARTITION_AND: [&[u8; 16]; 4] = [
+    &[255, 255, 255, 255, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], 
+    &[0, 0, 0, 0, 255, 255, 255, 255, 0, 0, 0, 0, 0, 0, 0, 0], 
+    &[0, 0, 0, 0, 0, 0, 0, 0, 255, 255, 255, 255, 0, 0, 0, 0],
+    &[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 255, 255, 255, 255],
 ];
 
 pub trait SIMDna {
@@ -26,7 +72,7 @@ pub trait SIMDna {
     fn count_ones(self) -> Self;
 
     fn locate_seeds(self, threshold: u8) -> Self;
-    fn get_seeds(self) -> u8;
+    unsafe fn get_seeds(self, offset: usize) -> Vec<usize>;
     unsafe fn shift_lanes(self) -> Self;
 
     /// Creates a new compressed nucleotide kmer SIMD vector, `slice` should be 17 base dna sequence
@@ -34,6 +80,9 @@ pub trait SIMDna {
 
     /// Creates a new finger print pattern representation
     unsafe fn load_pattern(slice: &[u8]) -> Self;
+
+    /// Turn array of u8 into SIMD vector
+    fn load(slice: &[u8; 16]) -> Self;
 }
 
 impl SIMDna for uint8x16_t {
@@ -49,24 +98,40 @@ impl SIMDna for uint8x16_t {
 
     #[inline]
     fn locate_seeds(self, threshold: u8) -> Self {
-        unsafe { vcgeq_u8(self, transmute([threshold; 16])) }
+        unsafe { vcgeq_u8(self, SIMDna::load(&[threshold; 16])) }
     }
 
     #[inline]
-    fn get_seeds(self) -> u8 {
-        // this would be a way to traverse lanes
-        unsafe { vgetq_lane_u8::<5>(self) }
+    unsafe fn get_seeds(self, offset: usize) -> Vec<usize> {
+        let mut seeds: Vec<usize> = vec![];
+
+        if vmaxvq_u8(self) != 255 {
+            return seeds;
+        }
+
+        let arr = ptr::addr_of!(self) as *const u8;
+
+        let mut i = 0;
+        while i < 16 {
+            if *arr.add(i*size_of::<u8>()) == 255 {
+                seeds.push(i+offset);
+            }
+
+            i += 1;
+        }
+
+        seeds
     }
 
     #[inline]
     unsafe fn shift_lanes(self) -> Self {
-        let mut res: Self = transmute([0u8; 16]);
+        let mut res: Self = SIMDna::load(&[0u8; 16]);
 
         for i in 0..8 {
             res = vorrq_u8(
                 res,
-                vandq_u8(self, transmute([(1 << i) as u8; 16]))
-                    .shuffle_bytes(transmute(SHIFT_LANE_LEFT[i])),
+                vandq_u8(self, SIMDna::load(LANE_AND[i]))
+                    .shuffle_bytes(SIMDna::load(SHIFT_LANE_LEFT[i])),
             );
         }
 
@@ -81,7 +146,7 @@ impl SIMDna for uint8x16_t {
             b[i] = ((kmer[0] & 0x6) << 1) | ((kmer[1] & 0x6) >> 1);
         }
 
-        transmute(b)
+        SIMDna::load(&b)
     }
 
     #[inline]
@@ -96,7 +161,12 @@ impl SIMDna for uint8x16_t {
             patterns[idx as usize] |= 1 << i
         }
 
-        transmute(patterns)
+        SIMDna::load(&patterns)
+    }
+
+    #[inline]
+    fn load(slice: &[u8; 16]) -> Self {
+        unsafe { vld1q_u8(slice.as_ptr() as *const u8) }
     }
 }
 
@@ -104,15 +174,16 @@ impl SIMDna for uint8x16_t {
 fn simd_instr() {
     unsafe {
         let pattern_vec: uint8x16_t = SIMDna::load_pattern(b"CAGAGC");
-        let ref_vec: uint8x16_t = SIMDna::load_ref(b"TTTTTCAGAGCTTTTTT");
+        let ref_vec: uint8x16_t = SIMDna::load_ref(b"TCAGAGCTTTTTTTTTT");
         let c = pattern_vec.shuffle_bytes(ref_vec);
 
-        println!("{:?}", c.shift_lanes());
-        println!("{:?}", c.shift_lanes().count_ones());
-        println!("{:?}", c.shift_lanes().count_ones().locate_seeds(3));
+        // println!("{:?}", pattern_vec);
+        // println!("{:?}", c.shift_lanes());
+        // println!("{:?}", c.shift_lanes().count_ones());
+        // println!("{:?}", c.shift_lanes().count_ones().locate_seeds(3));
         println!(
             "{:?}",
-            c.shift_lanes().count_ones().locate_seeds(3).get_seeds()
+            c.shift_lanes().count_ones().locate_seeds(3).get_seeds(0)
         );
     }
 }

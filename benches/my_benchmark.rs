@@ -34,6 +34,7 @@ pub fn file_scan_simd(c: &mut Criterion) {
                             .shift_lanes()
                             .count_ones()
                             .locate_seeds(3)
+                            .get_seeds(start)
                     };
 
                     start += 10;
@@ -48,6 +49,7 @@ pub fn file_scan_simd(c: &mut Criterion) {
                             .shift_lanes()
                             .count_ones()
                             .locate_seeds(3)
+                            .get_seeds(start)
                     };
                 }
             }
@@ -100,9 +102,19 @@ pub fn file_scan_edit_dist(c: &mut Criterion) {
 
     c.bench_function("scan file edit dist", |b| {
         b.iter(|| {
+            let mut best_match = None;
+
             for seq in &lines {
-                for overlap in seq.as_bytes()[..].windows(pattern.len()) {
-                    hamming(black_box(overlap), black_box(pattern), black_box(13));
+                for (i, overlap) in seq.as_bytes()[..].windows(pattern.len()).enumerate() {
+                    if let Some(matches) = hamming(overlap, pattern, 5) {
+                        if let Some((best_matches, _, _)) = best_match {
+                            if matches <= best_matches {
+                                continue;
+                            }
+                        }
+            
+                        best_match = Some((matches, i, i + pattern.len()));
+                    }
                 }
             }
         })
