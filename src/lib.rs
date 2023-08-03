@@ -9,7 +9,7 @@ pub fn main() {
     let pattern_seq = b"CAGAGC";
     let pattern: uint8x16_t = unsafe { SIMDna::load_pattern(pattern_seq) };
 
-    let seq = "TCAGATTCTCCCCGGATTTAATCAGAGCTGAATTTT";
+    let seq = "TCAGATTCTCCCCGGATTTAATTGAATTTT";
 
     let mut start = 0;
 
@@ -21,6 +21,8 @@ pub fn main() {
             }
 
             start = idx + 1;
+        } else {
+            break;
         }
     }
 }

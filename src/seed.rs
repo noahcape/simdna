@@ -7,7 +7,7 @@ use std::arch::x86_64::*;
 #[cfg(target_arch = "aarch64")]
 use std::{arch::aarch64::*, mem::transmute};
 
-use std::{mem::size_of, ptr};
+use std::{mem::size_of, ptr, slice::SliceIndex};
 
 static SHIFT_LANE_LEFT: [&[u8; 16]; 8] = [
     &[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15],
@@ -116,31 +116,33 @@ impl SIMDna for uint8x16_t {
     }
 
     #[inline]
-    unsafe fn locate(self, ref_: &[u8], threshold: u8, start: &mut usize) -> Option<usize> {
+    unsafe fn locate(self, ref_: &[u8], threshold: u8, start_idx: &mut usize) -> Option<usize> {
         let block_size = uint8x16_t::block_size();
 
-        while *start < ref_.len() - block_size {
-            let seq: uint8x16_t = SIMDna::load_ref(&ref_[*start..=*start + block_size]);
+        let mut start = *start_idx;
+
+        while start < ref_.len() - block_size {
+            let seq: uint8x16_t = SIMDna::load_ref(&ref_[start..=start + block_size]);
             let idx = self
                 .shuffle_bytes(seq)
                 .shift_lanes()
                 .fill_seed_lanes(threshold)
-                .find(*start, block_size);
+                .find(start, block_size);
 
             if idx.is_some() {
                 return idx;
             }
 
-            *start += 10;
+            start += 10;
         }
 
-        if *start >= ref_.len() - block_size {
-            let seq_vec: uint8x16_t = SIMDna::load_ref(&ref_[*start..]);
+        if start >= ref_.len() - block_size {
+            let seq_vec: uint8x16_t = SIMDna::load_ref(&ref_[start..]);
             let idx = self
                 .shuffle_bytes(seq_vec)
                 .shift_lanes()
                 .fill_seed_lanes(3)
-                .find(*start, ref_.len() - *start);
+                .find(start, ref_.len() - start);
 
             if idx.is_some() {
                 return idx;
