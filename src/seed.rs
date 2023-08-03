@@ -20,18 +20,6 @@ static SHIFT_LANE_LEFT: [&[u8; 16]; 8] = [
     &[7, 8, 9, 10, 11, 12, 13, 14, 15, 0, 0, 0, 0, 0, 0, 0],
 ];
 
-static LANE_AND: [&[u8; 16]; 8] = [
-    &[1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
-    &[2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 0],
-    &[4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 0, 0],
-    &[8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 0, 0, 0],
-    &[16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 0, 0, 0, 0],
-    &[32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 0, 0, 0, 0, 0],
-    &[64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 0, 0, 0, 0, 0, 0],
-    &[
-        128, 128, 128, 128, 128, 128, 128, 128, 128, 0, 0, 0, 0, 0, 0, 0,
-    ],
-];
 
 pub trait SIMDna {
     fn block_size() -> usize;
@@ -107,7 +95,7 @@ impl SIMDna for uint8x16_t {
         for i in 0..8 {
             res = vorrq_u8(
                 res,
-                vandq_u8(self, SIMDna::load(LANE_AND[i]))
+                vandq_u8(self, SIMDna::load(&[1 << i; 16]))
                     .shuffle_bytes(SIMDna::load(SHIFT_LANE_LEFT[i])),
             );
         }
@@ -188,9 +176,13 @@ impl SIMDna for uint8x16_t {
 fn simd_instr() {
     unsafe {
         let pattern_vec: uint8x16_t = SIMDna::load_pattern(b"CAGAGC");
-        let ref_vec: uint8x16_t = SIMDna::load_ref(b"TCAGAGCTTTTTTTTTT");
+        let ref_vec: uint8x16_t = SIMDna::load_ref(b"TNTATACCTTCAGAGCG");
         let c = pattern_vec.shuffle_bytes(ref_vec);
 
+        println!("{:?}", pattern_vec);
+        println!("{:?}", ref_vec);
+        println!("{:?}", c);
+        println!("{:?}", c.shift_lanes());
         println!("{:?}", c.shift_lanes().fill_seed_lanes(3).find(0, 16));
     }
 }
