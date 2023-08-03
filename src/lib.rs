@@ -1,8 +1,18 @@
-pub mod seed;
+pub mod simdna;
+
+// SIMD instructions
+// #[cfg(feature = "simd_neon")]
+/// cbindgen:ignore
+pub mod neon;
+
+// #[cfg(feature = "simd_avx2")]
+/// cbindgen:ignore
+pub mod avx2;
+pub mod fallback;
 
 use std::arch::aarch64::uint8x16_t;
 
-use crate::seed::SIMDna;
+use crate::simdna::SIMDna;
 
 #[inline]
 pub fn main() {

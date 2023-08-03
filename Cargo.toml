@@ -10,6 +10,16 @@ edition = "2021"
 [dev-dependencies]
 criterion = { version = "0.3", features = ["html_reports"] }
 
+[package.metadata.docs.rs]
+features = ["simd_neon"]
+
+[features]
+# Enable AVX2
+simd_avx2 = []
+# Enable Neon
+simd_neon = []
+
 [[bench]]
 name = "my_benchmark"
 harness = false
+
