@@ -109,6 +109,21 @@ impl SIMDna for uint8x16_t {
 
         let mut start = *start_idx;
 
+        if ref_.len() <= block_size {
+            let seq: uint8x16_t = SIMDna::load_ref(&ref_[start..=start + block_size]);
+            let idx = self
+                .shuffle_bytes(seq)
+                .shift_lanes()
+                .fill_seed_lanes(threshold)
+                .find(start, block_size);
+
+            if idx.is_some() {
+                return idx;
+            }
+
+            return None
+        }
+
         while start < ref_.len() - block_size {
             let seq: uint8x16_t = SIMDna::load_ref(&ref_[start..=start + block_size]);
             let idx = self
@@ -184,6 +199,21 @@ fn simd_instr() {
         println!("{:?}", c);
         println!("{:?}", c.shift_lanes());
         println!("{:?}", c.shift_lanes().fill_seed_lanes(3).find(0, 16));
+    }
+}
+
+#[test]
+fn short_ref() {
+    unsafe {
+        let pattern_vec: uint8x16_t = SIMDna::load_pattern(b"CAGAGC");
+        let ref_vec: uint8x16_t = SIMDna::load_ref(b"CAGAGC");
+        let c = pattern_vec.shuffle_bytes(ref_vec);
+
+        println!("{:?}", pattern_vec);
+        println!("{:?}", ref_vec);
+        println!("{:?}", c);
+        println!("{:?}", c.shift_lanes());
+        println!("{:?}", c.shift_lanes().fill_seed_lanes(3).find(0, 6));
     }
 }
 
