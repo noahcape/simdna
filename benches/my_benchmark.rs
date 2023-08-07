@@ -1,7 +1,7 @@
 use std::arch::aarch64::uint8x16_t;
 
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
-use simdna::{hamming, simdna::*, fallback::Patterns};
+use simdna::{utils::hamming, simdna::*, fallback::Patterns};
 
 pub fn file_scan_simd(c: &mut Criterion) {
     use std::{
