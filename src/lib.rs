@@ -2,12 +2,14 @@ pub mod seed;
 
 use std::arch::aarch64::uint8x16_t;
 
-use crate::seed::SIMDna;
+use seed::PackedByte;
+
+use crate::seed::*;
 
 #[inline]
 pub fn main() {
     let pattern_seq = b"CAGAGC";
-    let pattern: uint8x16_t = unsafe { SIMDna::load_pattern(pattern_seq) };
+    let pattern: PackedByte<uint8x16_t> = unsafe { SIMDByte::load_pattern(pattern_seq) };
 
     let seq = "TCAGATTCTCCCCGGATTTAATTGAATTTT";
 
@@ -15,9 +17,13 @@ pub fn main() {
 
     loop {
         if let Some(idx) = unsafe { pattern.locate(seq.as_bytes(), 3, &mut start) } {
-            if let Some(_) = hamming(pattern_seq, seq[idx..idx + pattern_seq.len()].as_bytes(), 5) {
-                println!("Match at: {}", idx);
-                break;
+            if idx + pattern_seq.len() <= seq.len() {
+                if let Some(_) =
+                    hamming(pattern_seq, seq[idx..idx + pattern_seq.len()].as_bytes(), 4)
+                {
+                    println!("Match at: {}", idx);
+                    break;
+                }
             }
 
             start = idx + 1;
